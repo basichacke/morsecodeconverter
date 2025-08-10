@@ -1,0 +1,156 @@
+#include <Wire.h> // for working with I2C
+#include <LiquidCrystal_I2C.h> // for working with the display
+
+#define CARKABUTTONPIN 12 
+#define TECKABUTTONPIN 8
+#define ODDELBUTTONPIN 10
+#define DISPLAY_NUMOFCOLUMNS 16 // Working with a 16x2 display
+
+int carkaButtonState = 0;
+int carkaButtonLastState = 0;
+int teckaButtonState = 0;
+int teckaButtonLastState = 0;
+int oddelButtonState = 0;
+int oddelButtonLastState = 0;
+String tonesBuffer;
+String text;
+String expectedText;
+
+String symbolsAlphabet[][2] =
+{
+  { ".-","A" },
+  { "-...","B" },
+  { "-.-.","C" },
+  { "-..","D" },
+  { ".","E" },
+  { "..-.","F" },
+  { "--.","G" },
+  { "....","H" },
+  { "..","I" },
+  { ".---","J" },
+  { "-.-","K" },
+  { ".-..","L" },
+  { "--","M" },
+  { "-.","N" },
+  { "---","O" },
+  { ".--.","P" },
+  { "--.-","Q" },
+  { ".-.","R" },
+  { "...","S" },
+  { "-","T" },
+  { "..-","U" },
+  { "...-","V" },
+  { ".--","W" },
+  { "-..-","X" },
+  { "-.--","Y" },
+  { "--..","Z" },
+  { ".----","1" },
+  { "..---","2" },
+  { "...--","3" },
+  { "....-","4" },
+  { ".....","5" },
+  { "-....","6" },
+  { "--...","7" },
+  { "---..","8" },
+  { "----.","9" },
+  { "-----","0"}
+};
+
+LiquidCrystal_I2C lcd(0x27, DISPLAY_NUMOFCOLUMNS, 2);
+char getToneFromButtonStates()
+{
+  if (!carkaButtonState && carkaButtonLastState)
+    return '-';
+  if (!teckaButtonState && teckaButtonLastState)
+    return '.';
+  if (!oddelButtonState && oddelButtonLastState)
+    return ' ';
+
+  return (char)0;
+}
+
+char getSymbolFromBuffer()
+{
+  if (tonesBuffer == "")
+    return ' '; // add a space if there are no previous characters
+
+  for (int i = 0; i < sizeof symbolsAlphabet / sizeof symbolsAlphabet[0]; i++)
+    // Loop through all symbols and compare the buffer with the alphabet
+    if (tonesBuffer == symbolsAlphabet[i][0])
+      return symbolsAlphabet[i][1][0]; // if it matches, return the corresponding symbol
+
+  // The buffer does not match any symbol, so return nothing
+  return (char)0;
+}
+
+void extractActionFromTonesBuffer()
+{
+  if (tonesBuffer == "......") // 6 dots
+    text.remove(text.length() - 1, 1); // deletes one character
+  if (tonesBuffer == "------") // 6 dashes
+    text = ""; // clears the entire text
+}
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(4, 0);
+  lcd.print("name");
+  lcd.setCursor(5, 1);
+  lcd.print("AIML-I");
+
+  pinMode(CARKABUTTONPIN, INPUT);
+  pinMode(TECKABUTTONPIN, INPUT);
+  pinMode(ODDELBUTTONPIN, INPUT);
+}
+
+void loop() {
+  // read button states
+  carkaButtonState = digitalRead(CARKABUTTONPIN);
+  teckaButtonState = digitalRead(TECKABUTTONPIN);
+  oddelButtonState = digitalRead(ODDELBUTTONPIN);
+
+  char tone = getToneFromButtonStates(); // determines if and which button is pressed
+
+  if (tone != (char)0)
+  {
+    if (tone == ' ') // ends the sequence of tones, look for a symbol
+    {
+      char symbol = getSymbolFromBuffer();
+
+      if (symbol != (char)0) // The sequence of tones found a symbol, add it to the text
+      {
+        text += symbol;
+        if (text.length() > DISPLAY_NUMOFCOLUMNS) // If the number of characters exceeds the display size
+        {
+          text = (String)symbol; // display the new character at the first position, clear the others
+        }
+      }
+      else // The sequence of tones does not match any symbol, but could perform an action (e.g., delete a character)
+      {
+        extractActionFromTonesBuffer();
+      }
+      tonesBuffer = ""; // clears the buffer (dashes and dots)
+    }
+    else // dash or dot
+    {
+      tonesBuffer += tone;
+      if (tonesBuffer.length() > DISPLAY_NUMOFCOLUMNS) // if the number of tones exceeds the display size, clear the buffer
+      {
+        tonesBuffer = (String)tone;
+      }
+    }
+
+    // Writing to the display is performed only if a button was pressed
+
+    lcd.clear(); // clear the display
+    lcd.print(text); // print the text
+    lcd.setCursor(0, 1);
+    lcd.print(tonesBuffer); // print the sequence of tones
+  }
+
+  // update the previous state
+  carkaButtonLastState = carkaButtonState;
+  teckaButtonLastState = teckaButtonState;
+  oddelButtonLastState = oddelButtonState;
+}
